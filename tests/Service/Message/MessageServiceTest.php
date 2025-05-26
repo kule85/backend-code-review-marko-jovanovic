@@ -1,12 +1,10 @@
 <?php
 
-declare(strict_types=1);
-
-namespace Repository;
-
 use App\Entity\Message;
+use App\Dto\MessageFilter;
 use App\DataFixtures\AppFixtures;
 use App\Repository\MessageRepository;
+use App\Service\Message\MessageService;
 use Doctrine\Common\DataFixtures\Loader;
 use Doctrine\ORM\EntityManagerInterface;
 use App\Tests\Traits\MessageAssertionsTrait;
@@ -14,11 +12,11 @@ use Doctrine\Common\DataFixtures\Purger\ORMPurger;
 use Doctrine\Common\DataFixtures\Executor\ORMExecutor;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
-class MessageRepositoryTest extends KernelTestCase
+class MessageServiceTest extends KernelTestCase
 {
     use MessageAssertionsTrait;
 
-    private MessageRepository $repository;
+    private MessageService $service;
     private EntityManagerInterface $em;
 
     protected function setUp(): void
@@ -29,16 +27,16 @@ class MessageRepositoryTest extends KernelTestCase
 
         $em = $container->get(EntityManagerInterface::class);
         if (!$em instanceof EntityManagerInterface) {
-            throw new \LogicException('Expected instance of EntityManagerInterface');
+            throw new \LogicException('Expected EntityManagerInterface from container.');
         }
         $this->em = $em;
 
         $repository = $this->em->getRepository(Message::class);
         if (!$repository instanceof MessageRepository) {
-            throw new \LogicException('Expected instance of MessageRepository');
+            throw new \LogicException('Expected MessageRepository instance.');
         }
 
-        $this->repository = $repository;
+        $this->service = new MessageService($repository);
 
         $loader = new Loader();
         $loader->addFixture(new AppFixtures());
@@ -49,25 +47,28 @@ class MessageRepositoryTest extends KernelTestCase
         $executor->execute($loader->getFixtures());
     }
 
-    public function testFindByOptionalStatusReturnsSentMessages(): void
+    public function testListMessagesWithSentStatus(): void
     {
-        $response = $this->repository->findByOptionalStatus(Message::STATUS_SENT);
+        $messageDto = new MessageFilter(status: Message::STATUS_SENT);
+        $response = $this->service->listMessages($messageDto);
 
         $this->assertCount(5, $response);
         $this->assertAllMessagesHaveStatus($response, Message::STATUS_SENT);
     }
 
-    public function testFindByOptionalStatusReturnsReadMessages(): void
+    public function testListMessagesWithReadStatus(): void
     {
-        $response = $this->repository->findByOptionalStatus(Message::STATUS_READ);
+        $messageDto = new MessageFilter(status: Message::STATUS_READ);
+        $response = $this->service->listMessages($messageDto);
 
         $this->assertCount(5, $response);
         $this->assertAllMessagesHaveStatus($response, Message::STATUS_READ);
     }
 
-    public function testFindByOptionalStatusReturnsAllWhenNull(): void
+    public function testListMessagesWithoutStatus(): void
     {
-        $response = $this->repository->findByOptionalStatus(null);
+        $messageDto = new MessageFilter(status: null);
+        $response = $this->service->listMessages($messageDto);
 
         $sentMessages = array_filter($response, fn ($message) => $message->getStatus() === Message::STATUS_SENT);
         $readMessages = array_filter($response, fn ($message) => $message->getStatus() === Message::STATUS_READ);

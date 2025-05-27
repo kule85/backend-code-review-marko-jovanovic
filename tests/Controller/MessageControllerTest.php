@@ -81,7 +81,7 @@ class MessageControllerTest extends WebTestCase
         $this->assertArrayHasKey('message', $response);
         $this->assertSame(Message::RESPONSE_MESSAGE_SENT, $response['message']);
 
-        $this->transport('sync')
+        $this->transport('async')
             ->queue()
             ->assertContains(SendMessage::class, 1);
     }

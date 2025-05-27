@@ -1,57 +1,61 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Controller;
 
 use App\Message\SendMessage;
-use App\Repository\MessageRepository;
-use Controller\MessageControllerTest;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use App\Dto\MessageFilter;
+use App\Entity\Message;
+use App\Service\Message\MessageService;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Messenger\MessageBusInterface;
 
-/**
- * @see MessageControllerTest
- * TODO: review both methods and also the `openapi.yaml` specification
- *       Add Comments for your Code-Review, so that the developer can understand why changes are needed.
- */
-class MessageController extends AbstractController
+#[Route('/message')]
+class MessageController extends BaseController
 {
-    /**
-     * TODO: cover this method with tests, and refactor the code (including other files that need to be refactored)
-     */
-    #[Route('/messages')]
-    public function list(Request $request, MessageRepository $messages): Response
+    #[Route('', methods: ['GET'])]
+    public function list(Request $request, MessageService $messageService): Response
     {
-        $messages = $messages->by($request);
-  
-        foreach ($messages as $key=>$message) {
-            $messages[$key] = [
-                'uuid' => $message->getUuid(),
-                'text' => $message->getText(),
-                'status' => $message->getStatus(),
-            ];
+        $statusRaw = $request->query->get('status');
+        $status = is_string($statusRaw) || $statusRaw === null ? $statusRaw : null;
+
+        $messageFilter = new MessageFilter($status);
+        $errors = $this->validate($messageFilter);
+
+        if (count($errors) > 0) {
+            return $this->json(['errors' => $errors], 400);
         }
-        
-        return new Response(json_encode([
-            'messages' => $messages,
-        ], JSON_THROW_ON_ERROR), headers: ['Content-Type' => 'application/json']);
+
+        $response = $messageService->listMessages($messageFilter);
+
+        return $this->json($response, 200, [], ['groups' => ['message:summary']]);
     }
 
-    #[Route('/messages/send', methods: ['GET'])]
+    #[Route('/send', methods: ['POST'])]
     public function send(Request $request, MessageBusInterface $bus): Response
     {
-        $text = $request->query->get('text');
-        
-        if (!$text) {
-            return new Response('Text is required', 400);
+        $requestData = json_decode($request->getContent(), true);
+
+        if (!is_array($requestData)) {
+            return $this->json(['errors' => ['Invalid JSON']], 400);
         }
 
-        $bus->dispatch(new SendMessage($text));
-        
-        return new Response('Successfully sent', 204);
+        if (!isset($requestData['text']) || !is_string($requestData['text'])) {
+            return $this->json(['errors' => ['text' => 'This value should be a non-empty string.']], 400);
+        }
+
+        $newMessage = new SendMessage($requestData['text']);
+        $errors = $this->validate($newMessage);
+
+        if (count($errors) > 0) {
+            return $this->json(['errors' => $errors], 400);
+        }
+
+        $bus->dispatch($newMessage);
+
+        return $this->json(['message' => Message::RESPONSE_MESSAGE_SENT], 201);
     }
 }

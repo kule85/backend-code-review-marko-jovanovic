@@ -14,6 +14,9 @@ use Symfony\Component\HttpFoundation\Request;
  * @method Message|null findOneBy(array $criteria, array $orderBy = null)
  * @method Message[]    findAll()
  * @method Message[]    findBy(array $criteria, array $orderBy = null, $limit = null, $offset = null)
+ *
+ * Custom methods:
+ * @method Message[] findByOptionalStatus(?string $status)
  */
 class MessageRepository extends ServiceEntityRepository
 {
@@ -21,21 +24,25 @@ class MessageRepository extends ServiceEntityRepository
     {
         parent::__construct($registry, Message::class);
     }
-    
-    public function by(Request $request): array
+
+    /**
+     * Returns messages filtered by status if provided.
+     *
+     * @param string|null $status
+     * @return Message[]
+     */
+    public function findByOptionalStatus(?string $status): array
     {
-        $status = $request->query->get('status');
-        
+        $qb = $this->createQueryBuilder('m');
+
         if ($status) {
-            $messages = $this->getEntityManager()
-                ->createQuery(
-                    sprintf("SELECT m FROM App\Entity\Message m WHERE m.status = '%s'", $status)
-                )
-                ->getResult();
-        } else {
-            $messages = $this->findAll();
+            $qb->where('m.status = :status')
+               ->setParameter('status', $status);
         }
-        
-        return $messages;
+
+        /** @var Message[] $result */
+        $result = $qb->getQuery()->getResult();
+
+        return $result;
     }
 }
